@@ -4,7 +4,6 @@ const { isEmail } = require('validator')
 const detailSchema = new mongoose.Schema({
     fullname: {
         type: String,
-        unique: true,
         trim: true,
         required: [true, 'fullname is required'],
         maxLenght: 500
@@ -16,6 +15,7 @@ const detailSchema = new mongoose.Schema({
         length: 10
     },
     email: {
+        unique:true,
         type: String,
         trim: true,
         required: [true, 'email is required'],
