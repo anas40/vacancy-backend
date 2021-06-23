@@ -6,20 +6,30 @@ const fs = require('fs')
 const Path = require("path")
 
 
+const MAX_SIZE = 1000 * 1000
+
+
 const app = express()
 
-const MAX_SIZE = 1000*1000
+
 require('dotenv').config()
+require('./db')
+
+
+const Detail = require('./models/detail')
+
+
 const upload = multer({
-    limits: {fileSize:MAX_SIZE},
-    fileFilter(req,file,cb){
+    limits: { fileSize: MAX_SIZE },
+    fileFilter(req, file, cb) {
         let extension = Path.extname(file.originalname)
-        if(extension==='.pdf'|| extension==='.docx') return cb(null,true)
-        return cb(null,false)
+        if (extension === '.pdf' || extension === '.docx') return cb(null, true)
+        return cb(null, false)
     }
 })
+
+
 const PORT = process.env.PORT || 3000
-let bucketName = process.env.BUCKET_NAME
 
 
 aws.config.credentials = new aws.SharedIniFileCredentials();;
@@ -30,32 +40,69 @@ app.use(cors())
 
 
 app.post('/upload', upload.single('resume'), function (req, res) {
-    if (!req.file) {
-        return res.status(400).send('No files were uploaded.');
-    }
-    console.log(req.file);
-    const { originalname, buffer } = req.file
-    const fileName = Date.now() + "-" + originalname
+    if (!req.file) res.status(400).send('No files were uploaded.');
 
-    uploadFile(fileName, buffer)
+    const { originalname, buffer } = req.file
+    if (!originalname || !buffer) res.status(400).send("No file name or No file")
+
+    const fileName = getFileName(originalname)
+
+    uploadFile(process.env.BUCKET_ONLY_RESUME, fileName, buffer)
+
     res.send()
 });
 
 
-function uploadFile(fileName, data) {
-    const objectParams = { Bucket: bucketName, Key: fileName, Body: data };
-    const uploadPromise = new aws.S3({ apiVersion: '2006-03-01' }).putObject(objectParams).promise();
-    uploadPromise
-        .then(data => {
-            console.log("Successfully uploaded data to " + bucketName + "/" + fileName, data)
+app.post('/upload-full', upload.single('resume'), function (req, res) {
+    if (!req.file) res.status(400).send('No file attached')
+
+    const { originalname, buffer } = req.file
+    if (!originalname || !buffer) res.status(400).send("No file name or No file")
+
+    const { fullname, email, contact } = req.body
+    // console.log(fullname,email,contact)
+    if (!fullname || !email || !contact) res.status(400).send("Details not complete")
+
+    const fileName = getFileName(originalname)
+
+    const bucketName = process.env.BUCKET_FULL_RESUME
+
+    uploadFile(bucketName,fileName,buffer).then(path=>{
+        let newDetail = new Detail({ email,fullname,contact, resume: path });
+        newDetail.save().then(()=>{
+            res.send()
+        }).catch(error=>{
+            console.log(error)
+            res.status(400).send("Some problem with file saving, try again in a minute")
         })
-        .catch(er => {
-            console.log("Error in uploading saving to local file system, Error: ", er)
-            const path = Path.join(__dirname, "resume", fileName)
-            fs.writeFile(path, data, () => {
-                console.log("File saved")
+    }).catch(error=>{
+        console.log("Validation failed from mongoose")
+        res.status(400).send("Provide valid data")
+    })
+})
+
+function getFileName(name) {
+    return Date.now() + "-" + name
+}
+
+function uploadFile(bucketName, fileName, data) {
+    return new Promise((resolve, reject)=>{
+        const objectParams = { Bucket: bucketName, Key: fileName, Body: data };
+        const uploadPromise = new aws.S3({ apiVersion: '2006-03-01' }).putObject(objectParams).promise();
+        uploadPromise
+            .then(data => {
+                console.log("Successfully uploaded data to " + bucketName + "/" + fileName, data)
+                resolve(`https://${bucketName}.s3.ap-south-1.amazonaws.com/${fileName}`)
             })
-        })
+            .catch(er => {
+                console.log("Error in uploading saving to local file system, Error: ", er)
+                const path = Path.join(__dirname, "resume", fileName)
+                fs.writeFile(path, data, () => {
+                    console.log("File saved")
+                })
+                resolve(`resume/${fileName}`)
+            })
+    })
 }
 
 
