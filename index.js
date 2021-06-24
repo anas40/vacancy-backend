@@ -63,21 +63,27 @@ app.post('/upload-full', upload.single('resume'), function (req, res) {
     // console.log(fullname,email,contact)
     if (!fullname || !email || !contact) res.status(400).send("Details not complete")
 
-    const fileName = getFileName(originalname)
+    Detail.findOne({ email }).then((data) => {
+        if (data !== null) throw new Error()
 
-    const bucketName = process.env.BUCKET_FULL_RESUME
+        const fileName = getFileName(originalname)
 
-    uploadFile(bucketName,fileName,buffer).then(path=>{
-        let newDetail = new Detail({ email,fullname,contact, resume: path });
-        newDetail.save().then(()=>{
-            res.send()
-        }).catch(error=>{
-            console.log(error)
-            res.status(400).send("Some problem with file saving, try again in a minute")
+        const bucketName = process.env.BUCKET_FULL_RESUME
+
+        uploadFile(bucketName, fileName, buffer).then(path => {
+            let newDetail = new Detail({ email, fullname, contact, resume: path });
+            newDetail.save().then(() => {
+                res.send()
+            }).catch(error => {
+                console.log(error)
+                res.status(400).send("Some problem with file saving, try again in a minute")
+            })
+        }).catch(error => {
+            console.log("Validation failed from mongoose")
+            res.status(400).send("Provide valid data")
         })
-    }).catch(error=>{
-        console.log("Validation failed from mongoose")
-        res.status(400).send("Provide valid data")
+    }).catch(error => {
+        res.status(400).send("account already exist")
     })
 })
 
@@ -86,7 +92,7 @@ function getFileName(name) {
 }
 
 function uploadFile(bucketName, fileName, data) {
-    return new Promise((resolve, reject)=>{
+    return new Promise((resolve, reject) => {
         const objectParams = { Bucket: bucketName, Key: fileName, Body: data };
         const uploadPromise = new aws.S3({ apiVersion: '2006-03-01' }).putObject(objectParams).promise();
         uploadPromise
