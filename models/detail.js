@@ -12,7 +12,7 @@ const detailSchema = new mongoose.Schema({
         type: String,
         trim: true,
         required: [true, 'contact is required'],
-        length: 10
+        length: 8
     },
     email: {
         unique:true,
